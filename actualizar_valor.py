@@ -68,13 +68,18 @@ def delta_usd(fecha_inicio: datetime, logs=False):
         print('\t [LOG] - Dolar HOY: ', dolar_hoy)
     return round((dolar_hoy - dolar_historico) / dolar_historico, 2) 
 
-def delta_ipc(fecha_inicio: datetime, logs=False) -> float:
+def delta_ipc(fecha_inicio: datetime = None, logs=False) -> float:
     ''' Calcula el valor acumulado de inflacion sumando el IPC mensual 
         desde la fecha de inicio hasta el ultimo dia del mes pasado '''
 
     response = requests.get(f"{BASE_URL}/finanzas/indices/inflacion") 
 
     data = response.json() 
+
+    if not fecha_inicio:
+
+        ultimo_valor_ipc = float(data[-1]['valor']) / 100
+        return round(ultimo_valor_ipc, 2)
 
     # la API retorna un str en este formato     "fecha": "1995-04-30",
     fecha_inicio = fecha_inicio.strftime('%Y-%m-%d') 
@@ -107,8 +112,8 @@ def delta_ipc(fecha_inicio: datetime, logs=False) -> float:
     return round(ipc_acumulado, 2)
 
 def formula_actualizacion(valor: float,
-                      delta_ipc: float,
-                      delta_usd: float,
+                      delta_ipc: float = 0,
+                      delta_usd: float = 0,
                       ponderacion_ipc: float = 0.5,
                       ponderacion_usd: float = 0.5):
 
@@ -117,7 +122,7 @@ def formula_actualizacion(valor: float,
     
     valor_actualizado = valor * (1 + ponderacion_ipc * delta_ipc + ponderacion_usd * delta_usd)
     return round(valor_actualizado, 2)
-
+ 
 @cli.command('ipc')
 def ultimo_ipc():
 
@@ -136,7 +141,8 @@ def test():
         {'nombre': 'celular', 'anterior': 14199, 'actual': 14750},
         {'nombre': 'seguro-auto', 'anterior': 99734, 'actual': 102255},
         {'nombre': 'seguro-auto2', 'anterior': 106090, 'actual': 111394},
-        {'nombre': 'osde', 'anterior': 355289, 'actual': 364548}
+        {'nombre': 'osde', 'anterior': 355289, 'actual': 364548},
+        {'nombre': 'fibertel-internet', 'anterior': 36066, 'actual': 36972}
     ] 
     
     for d in data:
@@ -145,28 +151,44 @@ def test():
         print(f'Aumento Real para {d['nombre']} >> {aumento_real}%')
 
 @cli.command()
-@click.option('--logs', '-l', is_flag=True, default=True)
-@click.argument('amount', type=int)
-@click.argument('year', type=click.IntRange(1943, datetime.date.today().year))
-@click.argument('month', type=click.IntRange(1, 12))
+@click.option('--logs', '-l', is_flag=True, default=False)
+@click.argument('amount', type=int, required=True)
+@click.argument('year', type=click.IntRange(1943, datetime.date.today().year), required=False)
+@click.argument('month', type=click.IntRange(1, 12), required=False)
 
 def actualizacion(amount, year, month, logs=False):
+    # TODO 
+    # Asi como me muestra los delta relativos
+    # que me muestre la cantidad de meses que esta yendo hacia atras
+    
+    # TODO que pasa si me das un mes que no existe ??? como resolvemos eso
 
-    day = ultimo_dia_mes(year, month)
 
-    fecha_inicio = datetime.date(year, month, day)
-    # print('El IPC acumulado : ', delta_ipc(fecha_inicio))
-    # 
+    PONDERACION_IPC = 1
+    PONDERACION_USD = 0
+
+
+    if year and month:
+        day = ultimo_dia_mes(year, month)
+        fecha_inicio = datetime.date(year, month, day)
+    else:
+        fecha_inicio = None
+
+    ipc = 0
+    if PONDERACION_IPC > 0:
+        ipc = delta_ipc(fecha_inicio, logs)
+        print('Delta IPC >>', ipc)
+
+    usd = 0
+    if PONDERACION_USD > 0:
+        usd = delta_usd(fecha_inicio, logs)
+        print('Delta USD >>', usd)
+    
     amount = float(amount)
-    ipc = delta_ipc(fecha_inicio, logs)
-    usd = delta_usd(fecha_inicio, logs)
-    print('Delta IPC >>', ipc)
-    print('Delta USD >>', usd)
-    print('Nuevo valor >>', formula_actualizacion(amount, ipc, usd, 1, 0))
+    print('Nuevo valor >>', formula_actualizacion(amount, ipc, usd, PONDERACION_IPC, PONDERACION_USD))
 
     # print('Procesando aumentos ... \n\nVALOR >> $', amount, 'INICIO >>', date)
 
 if __name__ == '__main__':
     cli()
-# todo anotar varios casos de prueba
 
